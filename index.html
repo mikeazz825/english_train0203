@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聽寫練習神器-穩定版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen p-4">
+    <div class="max-w-md mx-auto bg-white p-6 rounded-3xl shadow-2xl border-b-4 border-indigo-500">
+        <h1 class="text-2xl font-black mb-6 text-indigo-600 text-center uppercase">Vocab Master</h1>
+        
+        <textarea id="wordInput" class="w-full h-32 p-4 border-2 border-slate-100 rounded-2xl mb-4 focus:border-indigo-500 outline-none bg-slate-50" placeholder="貼上單字 (換行或逗號隔開)"></textarea>
+
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="bg-slate-50 p-3 rounded-xl">
+                <label class="block text-xs font-bold text-slate-400 mb-1">語速: <span id="rateLabel" class="text-indigo-600">0.9x</span></label>
+                <input type="range" id="rateRange" min="0.4" max="1.5" step="0.1" value="0.9" class="w-full accent-indigo-600">
+            </div>
+            <div class="bg-slate-50 p-3 rounded-xl">
+                <label class="block text-xs font-bold text-slate-400 mb-1">間隔 (秒)</label>
+                <input type="number" id="pauseTime" value="4" class="w-full bg-transparent font-bold text-indigo-600 outline-none">
+            </div>
+        </div>
+
+        <button id="startBtn" onclick="start()" class="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-indigo-700 active:scale-95 transition-all text-lg">開始隨機默寫</button>
+        <button onclick="stop()" class="w-full text-slate-400 font-bold py-3 mt-2">停止並重設語音</button>
+
+        <div id="status" class="mt-4 text-center font-bold text-indigo-400 min-h-[1.5rem]"></div>
+        <div id="resultArea" class="hidden mt-6 p-4 bg-indigo-50 rounded-2xl">
+            <h3 class="font-black text-indigo-800 mb-2 underline">測驗順序：</h3>
+            <ol id="resultList" class="list-decimal list-inside space-y-1 text-indigo-700 font-mono"></ol>
+        </div>
+    </div>
+
+    <script>
+        const synth = window.speechSynthesis;
+        let isRunning = false;
+        let list = [];
+
+        document.getElementById('rateRange').oninput = function() {
+            document.getElementById('rateLabel').innerText = this.value + 'x';
+        };
+
+        async function start() {
+            if (isRunning) return;
+            
+            // 關鍵修復：開始前先強行取消所有排隊中的語音
+            synth.cancel();
+            await new Promise(r => setTimeout(r, 100)); // 緩衝一小段時間
+
+            const text = document.getElementById('wordInput').value;
+            list = text.split(/[\n,，\s]+/).filter(w => w.trim() !== "").sort(() => Math.random() - 0.5);
+            
+            if (list.length === 0) return alert("請輸入單字");
+
+            isRunning = true;
+            document.getElementById('resultArea').classList.add('hidden');
+            document.getElementById('resultList').innerHTML = "";
+            document.getElementById('startBtn').innerText = "🔊 播放中...";
+            document.getElementById('startBtn').disabled = true;
+
+            const rate = document.getElementById('rateRange').value;
+            const pause = document.getElementById('pauseTime').value * 1000;
+
+            for (let i = 0; i < list.length; i++) {
+                if (!isRunning) break;
+                document.getElementById('status').innerText = `正在唸第 ${i+1} / ${list.length} 個...`;
+                
+                let ut = new SpeechSynthesisUtterance(list[i]);
+                ut.lang = 'en-US';
+                ut.rate = rate;
+
+                // 播放語音
+                synth.speak(ut);
+
+                // 使用 Promise 等待播放結束或超時保護
+                await new Promise(resolve => {
+                    const timeout = setTimeout(() => {
+                        console.warn("語音超時，自動跳下一個");
+                        resolve();
+                    }, 10000); // 10秒沒唸完就強行跳過
+
+                    ut.onend = () => {
+                        clearTimeout(timeout);
+                        setTimeout(resolve, pause);
+                    };
+                    ut.onerror = () => {
+                        clearTimeout(timeout);
+                        resolve();
+                    };
+                });
+            }
+
+            if (isRunning) {
+                list.forEach(w => {
+                    let li = document.createElement('li');
+                    li.innerText = w;
+                    document.getElementById('resultList').appendChild(li);
+                });
+                document.getElementById('resultArea').classList.remove('hidden');
+                document.getElementById('status').innerText = "✅ 測驗結束！";
+            }
+            stop();
+        }
+
+        function stop() {
+            isRunning = false;
+            synth.cancel(); // 強行停止語音引擎
+            document.getElementById('startBtn').innerText = "開始隨機默寫";
+            document.getElementById('startBtn').disabled = false;
+        }
+    </script>
+</body>
+</html>
